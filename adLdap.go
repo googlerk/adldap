@@ -32,7 +32,7 @@ const dbEmp = "employee"
 
 func GetEmpByLoginName(loginname string) (sttEmpAd *EmployeeAd, err error) {
 	var sttReq = new(ReqAD)
-	sttEnv, err := adenv.GetAdEnv("../.env")
+	sttEnv, err := adenv.GetAdEnv("")
 	sttReq.ReqUser = loginname
 	sttEmpAd, err = adBindingGetInfo(sttReq, sttEnv)
 	// fmt.Printf("%#v", sttEmpAd)
