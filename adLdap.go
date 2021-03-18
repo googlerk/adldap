@@ -422,6 +422,9 @@ func validateEmpAd(sttEnv *adenv.AdEnv, sttEmpAd *EmployeeAd) *EmployeeAd {
 		sttEmpAd.Employee_ID = sttEmpAd.Employeenumber
 	case "uat":
 		sttEmpAd.Employee_ID = sttEmpAd.Description
+	case "local":
+		sttEmpAd.Employee_ID = sttEmpAd.Employeenumber
+	}
 	}
 	return sttEmpAd
 }
