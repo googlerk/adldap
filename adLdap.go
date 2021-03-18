@@ -417,6 +417,7 @@ func validateEmpAd(sttEnv *adenv.AdEnv, sttEmpAd *EmployeeAd) *EmployeeAd {
 	if sttEmpAd.Dn == "" {
 		sttEmpAd.Dn = sttEmpAd.DistinguishedName
 	}
+
 	switch strings.ToLower(sttEnv.ConstEnv) {
 	case "production":
 		sttEmpAd.Employee_ID = sttEmpAd.Employeenumber
@@ -424,7 +425,6 @@ func validateEmpAd(sttEnv *adenv.AdEnv, sttEmpAd *EmployeeAd) *EmployeeAd {
 		sttEmpAd.Employee_ID = sttEmpAd.Description
 	case "local":
 		sttEmpAd.Employee_ID = sttEmpAd.Employeenumber
-	}
 	}
 	return sttEmpAd
 }
