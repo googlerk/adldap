@@ -32,7 +32,7 @@ const dbEmp = "employee"
 
 func GetEmpByLoginName(loginname string) (sttEmpAd *EmployeeAd, err error) {
 	var sttReq = new(ReqAD)
-	sttEnv, err := adenv.GetAdEnv("")
+	sttEnv, err := adenv.GetAdEnv("../.env")
 	sttReq.ReqUser = loginname
 	sttEmpAd, err = adBindingGetInfo(sttReq, sttEnv)
 	// fmt.Printf("%#v", sttEmpAd)
@@ -121,6 +121,117 @@ func InsertOnDupEmpAd(sttEmpAd *EmployeeAd) (boo bool, err error) {
 	}
 	// fmt.Printf("\n Task GORM : Insert \n")
 	return true, resGORM.Error
+}
+
+func AddEmp(sttEmp *Employee) (boo bool, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return false, err
+	}
+	defer DBsql.Close()
+
+	var jsonData []byte
+	jsonData, err = json.Marshal(sttEmp)
+	if err != nil {
+		return false, err
+	}
+	jsonMap := make(map[string]interface{})
+	err = json.Unmarshal([]byte(jsonData), &jsonMap)
+	delete(jsonMap, "usr_id")
+
+	resGORM := DBgorm.Table(dbEmp).Create(jsonMap)
+	if resGORM.Error != nil {
+		return false, resGORM.Error
+	}
+	return true, resGORM.Error
+}
+
+func UpdateEmp(sttEmp *Employee) (boo bool, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return false, err
+	}
+	defer DBsql.Close()
+
+	var jsonData []byte
+	jsonData, err = json.Marshal(sttEmp)
+	if err != nil {
+		return false, err
+	}
+	jsonMap := make(map[string]interface{})
+	err = json.Unmarshal([]byte(jsonData), &jsonMap)
+
+	resGORM := DBgorm.Table(dbEmp).Where("usr_id = ?", jsonMap["usr_id"]).Updates(jsonMap)
+	if resGORM.Error != nil {
+		return false, resGORM.Error
+	}
+	// fmt.Printf("\n Task GORM : Insert \n")
+	return true, resGORM.Error
+}
+
+func InsertOnDupEmp(sttEmp *Employee) (boo bool, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return false, err
+	}
+	defer DBsql.Close()
+
+	var jsonData []byte
+	jsonData, err = json.Marshal(sttEmp)
+	if err != nil {
+		return false, err
+	}
+	jsonMap := make(map[string]interface{})
+	err = json.Unmarshal([]byte(jsonData), &jsonMap)
+	delete(jsonMap, "usr_id")
+
+	tmpWhere := fmt.Sprintf("%s", jsonMap["Employee_ID"])
+
+	var QryEmployee Employee
+	resGORM := DBgorm.Table(dbEmp).Where("Employee_ID = ?", tmpWhere).Last(&QryEmployee)
+	if resGORM.RowsAffected > 0 {
+		resGORM = DBgorm.Table(dbEmp).Where("usr_id = ?", QryEmployee.usr_id).Updates(jsonMap)
+		// fmt.Printf("\n Task GORM : Update \n")
+		if resGORM.Error != nil {
+			return false, resGORM.Error
+		}
+		return true, resGORM.Error
+	}
+
+	resGORM = DBgorm.Table(dbEmp).Create(jsonMap)
+	if resGORM.Error != nil {
+		return false, resGORM.Error
+	}
+	// fmt.Printf("\n Task GORM : Insert \n")
+	return true, resGORM.Error
+}
+
+func SelectEmpByID(EmpID string) (sttEmp *Employee, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return sttEmp, err
+	}
+	defer DBsql.Close()
+	var QryEmployee Employee
+	resGORM := DBgorm.Table(dbEmp).Where("Employee_ID = ?", EmpID).Last(&QryEmployee)
+	if resGORM.Error != nil {
+		return sttEmp, resGORM.Error
+	}
+	return sttEmp, resGORM.Error
+}
+
+func SelectEmpAdByID(EmpID string) (sttEmpAd *EmployeeAd, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return sttEmpAd, err
+	}
+	defer DBsql.Close()
+	var QryEmployeeAd EmployeeAd
+	resGORM := DBgorm.Table(dbEmpAd).Where("Employee_ID = ?", EmpID).Last(&QryEmployeeAd)
+	if resGORM.Error != nil {
+		return sttEmpAd, resGORM.Error
+	}
+	return sttEmpAd, resGORM.Error
 }
 
 func UserAuthenPassDN(dn string, pass string) (bool, error) {
@@ -347,4 +458,3 @@ func swList(s string) bool {
 	}
 	return false
 }
-  
