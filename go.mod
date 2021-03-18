@@ -1,4 +1,4 @@
-module adldap
+module github.com/googlerk/adldap
 
 go 1.15
 
