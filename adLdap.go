@@ -190,7 +190,7 @@ func InsertOnDupEmp(sttEmp *Employee) (boo bool, err error) {
 	var QryEmployee Employee
 	resGORM := DBgorm.Table(dbEmp).Where("Employee_ID = ?", tmpWhere).Last(&QryEmployee)
 	if resGORM.RowsAffected > 0 {
-		resGORM = DBgorm.Table(dbEmp).Where("usr_id = ?", QryEmployee.usr_id).Updates(jsonMap)
+		resGORM = DBgorm.Table(dbEmp).Where("usr_id = ?", QryEmployee.Usr_id).Updates(jsonMap)
 		// fmt.Printf("\n Task GORM : Update \n")
 		if resGORM.Error != nil {
 			return false, resGORM.Error
