@@ -6,6 +6,8 @@ github.com/googlerk/adcrypt v0.0.0-20210318200159-f9b0f8eea3b1 h1:WKuOM80vJOeuIM
 github.com/googlerk/adcrypt v0.0.0-20210318200159-f9b0f8eea3b1/go.mod h1:TSjI+HXmhgrj0HdksoFmmEJ0ALpPBgg7fDlE+ts5lZ0=
 github.com/googlerk/adenv v0.0.0-20210318222340-73a248ab7c11 h1:6glUL63UCUfpcISLunml1GRGUEp5BJ7cdBDXf7Q6bLQ=
 github.com/googlerk/adenv v0.0.0-20210318222340-73a248ab7c11/go.mod h1:alMyf9l+0fA4swJ5dQb3qZTA3/xmHEn/6bNa/XCFeI8=
+github.com/googlerk/adenv v0.0.2 h1:9kPh+s5TLz+pcZf9NS2canPqNLg9ZP76GBiC8JtJFkA=
+github.com/googlerk/adenv v0.0.2/go.mod h1:alMyf9l+0fA4swJ5dQb3qZTA3/xmHEn/6bNa/XCFeI8=
 github.com/jinzhu/inflection v1.0.0 h1:K317FqzuhWc8YvSVlFMCCUb36O/S9MCKRDI7QkRKD/E=
 github.com/jinzhu/inflection v1.0.0/go.mod h1:h+uFLlag+Qp1Va5pdKtLDYj+kHp5pxUVkryuEj+Srlc=
 github.com/jinzhu/now v1.1.1 h1:g39TucaRWyV3dwDO++eEc6qf8TVIQ/Da48WmqjZ3i7E=
