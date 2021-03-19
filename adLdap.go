@@ -35,8 +35,6 @@ func GetEmpByLoginName(loginname string) (sttEmpAd *EmployeeAd, err error) {
 	sttEnv, err := adenv.GetAdEnv("../.env")
 	sttReq.ReqUser = loginname
 	sttEmpAd, err = adBindingGetInfo(sttReq, sttEnv)
-	// fmt.Printf("%#v", sttEmpAd)
-	// fmt.Printf("%#v", err)
 	return sttEmpAd, err
 }
 
@@ -206,14 +204,13 @@ func InsertOnDupEmp(sttEmp *Employee) (boo bool, err error) {
 	return true, resGORM.Error
 }
 
-func SelectEmpByID(EmpID string) (sttEmp *Employee, err error) {
+func SelectEmpByID(s string) (sttEmp *Employee, err error) {
 	err = ConnectDB()
 	if err != nil {
 		return sttEmp, err
 	}
 	defer DBsql.Close()
-	var QryEmployee Employee
-	resGORM := DBgorm.Table(dbEmp).Where("Employee_ID = ?", EmpID).Last(&QryEmployee)
+	resGORM := DBgorm.Table(dbEmp).Where("Employee_ID = ?", s).Last(&sttEmp)
 	if resGORM.Error != nil {
 		return sttEmp, resGORM.Error
 	}
@@ -226,12 +223,26 @@ func SelectEmpAdByID(EmpID string) (sttEmpAd *EmployeeAd, err error) {
 		return sttEmpAd, err
 	}
 	defer DBsql.Close()
-	var QryEmployeeAd EmployeeAd
-	resGORM := DBgorm.Table(dbEmpAd).Where("Employee_ID = ?", EmpID).Last(&QryEmployeeAd)
+	resGORM := DBgorm.Table(dbEmpAd).Where("Employee_ID = ?", EmpID).Last(&sttEmpAd)
 	if resGORM.Error != nil {
 		return sttEmpAd, resGORM.Error
 	}
 	return sttEmpAd, resGORM.Error
+}
+
+func Authen(user string, pass string) (bool, error) {
+	var sttReq = new(ReqAD)
+	sttEnv, err := adenv.GetAdEnv("")
+	sttReq.ReqUser = user
+	sttReq.ReqPass = pass
+	sttEmpAd, err := adBindingGetDn(sttReq, sttEnv)
+	if err != nil {
+		return false, err
+	}
+	sttReq.ReqDN = sttEmpAd.Dn
+	fmt.Printf("\n\n %#v \n\n", sttEmpAd)
+	auth, err := adBindingAuthenDnPass(sttEnv, sttReq)
+	return auth, err
 }
 
 func UserAuthenPassDN(dn string, pass string) (bool, error) {
@@ -411,13 +422,58 @@ func adBindingGetInfo(sttReq *ReqAD, sttEnv *adenv.AdEnv) (sttEmpAd *EmployeeAd,
 	return sttEmpAd, err
 }
 
+func adBindingGetDn(sttReq *ReqAD, sttEnv *adenv.AdEnv) (sttEmpAd *EmployeeAd, err error) {
+	ad, err := ldap.DialTLS("tcp", sttEnv.BindHost+":"+sttEnv.BindPort, &tls.Config{InsecureSkipVerify: true})
+	if err != nil {
+		return sttEmpAd, err
+	}
+	err = ad.Bind(sttEnv.BindDN, string(adcrypt.Decrypt(sttEnv.BindPass, sttEnv.ValKey)))
+	if err != nil {
+		return sttEmpAd, err
+	}
+	fieldFind := "sAMAccountName"
+	switch strings.ToLower(sttEnv.ConstEnv) {
+	case "uat":
+		fieldFind = "Cn"
+	}
+	searchReq := ldap.NewSearchRequest(sttEnv.BindBaseDN,
+		ldap.ScopeWholeSubtree, 0, 0, 0, false,
+		"(&("+fieldFind+"="+sttReq.ReqUser+")(objectClass=user)(objectCategory=person))",
+		[]string{"*"},
+		[]ldap.Control{})
+	sr, err := ad.Search(searchReq)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	txtJSON := ""
+	for _, entry := range sr.Entries {
+		for _, attr := range entry.Attributes {
+			if txtJSON != "" {
+				txtJSON += ", "
+			}
+			switch {
+			case swList((strings.ToLower(attr.Name))):
+				s, _ := base64.StdEncoding.DecodeString(attr.Values[0])
+				txtJSON += `"` + string(attr.Name) + `"` + " : " + `"` + jsonEscape(string(s)) + `"` + ""
+			default:
+				txtJSON += `"` + string(attr.Name) + `"` + " : " + `"` + jsonEscape(attr.Values[0]) + `"` + ""
+			}
+		}
+	}
+	txtJSON = `{` + txtJSON + `}`
+	err = json.Unmarshal([]byte(txtJSON), &sttEmpAd)
+	sttEmpAd = validateEmpAd(sttEnv, sttEmpAd)
+
+	return sttEmpAd, err
+}
+
 func validateEmpAd(sttEnv *adenv.AdEnv, sttEmpAd *EmployeeAd) *EmployeeAd {
 	sttEmpAd.Createdate = sttEmpAd.WhenCreated
 	sttEmpAd.Updatedate = sttEmpAd.WhenChanged
 	if sttEmpAd.Dn == "" {
 		sttEmpAd.Dn = sttEmpAd.DistinguishedName
 	}
-
 	switch strings.ToLower(sttEnv.ConstEnv) {
 	case "production":
 		sttEmpAd.Employee_ID = sttEmpAd.Employeenumber
