@@ -146,3 +146,22 @@ type EmployeeAd struct {
 	WhenChanged                   string `grom:"column:whenChanged" json:"whenChanged"`
 	WhenCreated                   string `grom:"column:whenCreated" json:"whenCreated"`
 }
+
+type EmpAdToEmployee struct {
+	Usr_id             uint   `gorm:"column:usr_id; type:int(11); NOT NULL; AUTO_INCREMENT;" json:"usr_id"`
+	Business_Unit      string `gorm:"column:Business_Unit; type:varchar(200); DEFAULT NULL;" json:"department"`
+	Createdate         string `gorm:"column:createdate; type:datetime DEFAULT NULL;" json:"createdate"`
+	Email              string `gorm:"column:email; type:varchar(255); DEFAULT NULL;" json:"email"`
+	Employee_ID        string `gorm:"column:Employee_ID; type:varchar(15); NOT NULL;" json:"employeenumber"`
+	Employee_Name      string `gorm:"column:Employee_Name; type:varchar(255); DEFAULT NULL;" json:"displayName"`
+	Organization       string `gorm:"column:Organization; type:varchar(100); DEFAULT NULL;" json:"company"`
+	Onboard_Date       string `gorm:"column:Onboard_Date; type:varchar(255); DEFAULT NULL;" json:"whenCreated"`
+	Onboard_Month_Year string `gorm:"column:Onboard_Month_Year; type:varchar(255); DEFAULT NULL;" json:"whenCreated"`
+	Mobile             string `gorm:"column:Mobile; type:varchar(255); DEFAULT NULL;" json:"telephonenumber"`
+	Joining_Date       string `gorm:"column:Joining_Date; type:varchar(10); DEFAULT NULL;" json:"whenCreated"`
+	Sts_id             string `gorm:"column:sts_id; type:int(11); DEFAULT 1;" json:"sts_id"`
+}
+
+type ResErrHandle struct {
+	ResErr string
+}
