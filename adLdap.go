@@ -737,7 +737,6 @@ func syncEmpAd2Employee(mapEmpAd map[string]interface{}) (map[string]interface{}
 		mapEmpAd["createdate"] = time.Now()
 		mapEmp, err := mapJsonEmp(mapEmpAd)
 		if err != nil {
-
 			return mapEmpAd, err
 		}
 		fmt.Println(mapEmpAd["whenCreated"].(string) + " --> " + convDateTimeFixFormat(mapEmpAd["whenCreated"].(string), "y-m-d"))
@@ -947,8 +946,8 @@ func RunAdSync(timeFilter int) (boo bool, err error) {
 			param = "(sAMAccountName=" + char + ")"
 		}
 
-		fmt.Println(param)
-		boo, err = FilterAdSync(param)
+		// fmt.Println(param)
+		boo, err = FilterAdSync(param, timeFilter)
 		if err != nil {
 			txterr := fmt.Sprintf("%s", err.(net.Error))
 			err = errors.New(txterr)
@@ -961,9 +960,190 @@ func RunAdSync(timeFilter int) (boo bool, err error) {
 	return true, err
 }
 
-func FilterAdSync(char string) (boo bool, err error) {
-	boo, err = SyncProcessFilterAD(char)
+func FilterAdSync(char string, timeFilter int) (boo bool, err error) {
+	boo, err = SyncProcessFilterADandTime(char, timeFilter)
 	// fmt.Printf("\n boo : %#v \n", boo)
 	// fmt.Printf(" err : %#v \n\n", err)
 	return
+}
+
+func SyncProcessFilterADandTime(s string, i int) (boo bool, err error) {
+	err = ConnectDB()
+	if err != nil {
+		return false, err
+	}
+	defer DBsql.Close()
+
+	sr, err := LdapSearchFromFilter(s) //search AD ด้วย parameter s
+	if err != nil {
+		fmt.Println("LdapSearchFromFilter")
+		return false, err
+	}
+
+	err = UnMarshalAD2EmpADandTime(sr, i)
+	if err != nil {
+		fmt.Println("UnMarshalAD2EmpADandTime")
+		return false, err
+	}
+
+	boo, err = BatchUnableUser() //เปลี่ยน sts_id = 2 เมื่อหาใน AD Server ไม่พบ
+	if err != nil {
+		fmt.Println("BatchUnableUser")
+		return false, err
+	}
+
+	return true, err
+}
+
+func UnMarshalAD2EmpADandTime(sr *ldap.SearchResult, timeFilter int) (err error) {
+	// fmt.Println("Got", len(sr.Entries), "search results") //debug.fmt
+	countSr := 0
+	var SttResErr = new(ResErrHandle)
+	var sttEmpAd = new(EmployeeAd)
+	sttEnv, err := adenv.GetAdEnv("")
+	if err != nil {
+		fmt.Printf("%#v \n", "GetAdEnv")
+		return err
+	}
+
+	for _, entry := range sr.Entries {
+		txtJSON := ""
+		for _, attr := range entry.Attributes {
+			if txtJSON != "" {
+				txtJSON += ", "
+			}
+			switch {
+			case swList((strings.ToLower(attr.Name))):
+				s, _ := base64.StdEncoding.DecodeString(attr.Values[0])
+				txtJSON += `"` + string(attr.Name) + `"` + " : " + `"` + jsonEscape(string(s)) + `"` + ""
+			default:
+				txtJSON += `"` + string(attr.Name) + `"` + " : " + `"` + jsonEscape(attr.Values[0]) + `"` + ""
+			}
+		}
+		txtJSON = `{` + txtJSON + `}`
+		// fmt.Printf("\n %s \n", txtJSON)
+		clearstt(&sttEmpAd)
+
+		err = json.Unmarshal([]byte(txtJSON), &sttEmpAd)
+		if err != nil {
+			SttResErr.ResErr += "UnMarshalAD2EmpAD \n"
+		}
+		sttEmpAd = validateEmpAd(sttEnv, sttEmpAd)
+		countSr = countSr + 1
+		// fmt.Printf("( %v ) -> Employee_ID=%s SAMAccountName=%s Dn=%s \n", countSr, sttEmpAd.Employee_ID, sttEmpAd.SAMAccountName, sttEmpAd.Dn) //debug.fmt
+
+		jsonMap, err := mapJsonEmpAd(sttEmpAd)
+		if err != nil {
+			SttResErr.ResErr += "mapJsonEmpAd :: Employee_ID : " + sttEmpAd.Employee_ID + " SAMAccountName = " + sttEmpAd.SAMAccountName + " :: Dn = " + sttEmpAd.Dn + "\n"
+			goto endLoop
+			return err
+		}
+
+		jsonMap, err = syncAD2EmpAD(jsonMap)
+		if err != nil {
+			SttResErr.ResErr += "syncAD2EmpAD :: Employee_ID : " + jsonMap["employee_ID"].(string) + " SAMAccountName = " + jsonMap["sAMAccountName"].(string) + " :: Dn = " + jsonMap["dn"].(string) + "\n"
+			goto endLoop
+			return err
+		}
+		// fmt.Printf("\n ------------------------------------------ \n jsonMap : %#v \n", jsonMap)
+
+		jsonMap, err = syncEmpAd2EmployeeAndTime(jsonMap, timeFilter)
+		if err != nil {
+			SttResErr.ResErr += "syncEmpAd2EmployeeAndTime :: Employee_ID : " + jsonMap["employee_ID"].(string) + " SAMAccountName = " + jsonMap["sAMAccountName"].(string) + " :: Dn = " + jsonMap["dn"].(string) + "\n"
+			SttResErr.ResErr += fmt.Sprintf("%s", err) + "\n"
+			goto endLoop
+			return err
+		}
+	endLoop:
+	}
+	// fmt.Printf("\n ===== \n SttResErr.ResErr :  %s \n", SttResErr.ResErr)
+	return err
+}
+
+func syncEmpAd2EmployeeAndTime(mapEmpAd map[string]interface{}, timeFilter int) (map[string]interface{}, error) {
+	chkUpdate := md5.New()
+	chkExist := md5.New()
+	err := errors.New("")
+	var QryEmployee = new(EmpAdToEmployee)
+	resGORM := DBgorm.Table(dbEmp).Find(&QryEmployee, "Employee_ID = ? AND Employee_Name = ? ", mapEmpAd["employee_ID"], mapEmpAd["displayName"])
+	// fmt.Printf("Employee_Name : %s resGORM.RowsAffected : %#v \n", mapEmpAd["displayName"], resGORM.RowsAffected)
+	// fmt.Printf("------------------------------------------------- \n QryEmployee %#v \n", QryEmployee)
+
+	if resGORM.RowsAffected == 0 {
+		mapEmpAd["createdate"] = time.Now()
+		mapEmp, err := mapJsonEmp(mapEmpAd)
+		if err != nil {
+			return mapEmpAd, err
+		}
+		if timeFilter < 0 {
+			fmt.Println(mapEmpAd["whenCreated"].(string) + " --> " + convDateTimeFixFormat(mapEmpAd["whenCreated"].(string), "y-m-d"))
+			mapEmp.Email = mapEmpAd["mail"].(string)
+			mapEmp.Onboard_Date = convDateTimeFixFormat(mapEmpAd["whenCreated"].(string), "y-m-d")
+			mapEmp.Onboard_Month_Year = convDateTimeFixFormat(mapEmpAd["whenCreated"].(string), "m-y")
+			mapEmp.Joining_Date = convDateTimeFixFormat(mapEmpAd["whenCreated"].(string), "y-m-d")
+			mapEmp.Sts_id = "2"
+			resGORM = DBgorm.Table(dbEmp).Create(mapEmp)
+			if resGORM.Error != nil {
+				err = errors.New(fmt.Sprintf("Insert %s from struct EmpAdToEmployee \n %s \n", dbEmp, resGORM.Error))
+				return mapEmpAd, err
+			}
+		}
+
+		resMap, _ := mapJsonEmployee(mapEmp)
+		return resMap, resGORM.Error
+	}
+	// fmt.Println("Found Duplicate, Validate Data for Update table Employee")
+	mapEmp, err := mapJsonEmp(mapEmpAd)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("syncEmpAd2Employee func mapJsonEmp(mapEmpAd) : \n error : Usr_id= %s , Employee_ID= %s , Employee_Name= %s \n %#v \n", mapEmp.Usr_id, mapEmp.Employee_ID, mapEmp.Employee_Name, mapEmp))
+		return mapEmpAd, err
+	}
+	strUpdate := mapEmp.Business_Unit + mapEmp.Email + mapEmp.Employee_ID + mapEmp.Employee_Name + mapEmp.Organization + mapEmp.Onboard_Date + mapEmp.Onboard_Month_Year + mapEmp.Mobile + mapEmp.Joining_Date + mapEmp.Mobile
+	strExist := QryEmployee.Business_Unit + QryEmployee.Email + QryEmployee.Employee_ID + QryEmployee.Employee_Name + QryEmployee.Organization + QryEmployee.Onboard_Date + QryEmployee.Onboard_Month_Year + QryEmployee.Mobile + QryEmployee.Joining_Date + QryEmployee.Mobile
+	io.WriteString(chkUpdate, strUpdate)
+	io.WriteString(chkExist, strExist)
+	strMD5Update := fmt.Sprintf("%x", chkUpdate.Sum(nil))
+	strMD5Exist := fmt.Sprintf("%x", chkExist.Sum(nil))
+	// fmt.Printf("\n %s \n %s \n %s \n %s \n", strUpdate, strExist, strMD5Update, strMD5Exist)
+	mapEmp.Createdate = QryEmployee.Createdate
+	if strMD5Update != strMD5Exist {
+		resGORM = DBgorm.Table(dbEmp).Where("usr_id = ?", string(QryEmployee.Usr_id)).Updates(mapEmp)
+		if resGORM.Error != nil {
+			// fmt.Printf("\n %#v \n", mapEmp)
+			err = errors.New(fmt.Sprintf("Update %s from struct EmpAdToEmployee \n error : Usr_id= %s , Employee_ID= %s , Employee_Name= %s \n %#v \n", QryEmployee.Usr_id, QryEmployee.Employee_ID, QryEmployee.Employee_Name, mapEmp))
+			return mapEmpAd, err
+		}
+	}
+	return mapEmpAd, resGORM.Error
+}
+
+func RunAdSyncTimeAndChar(timeFilter int, chars []string) (boo bool, err error) {
+	// chars := []string{"a*", "b*", "c*", "d*", "e*", "f*", "g*", "h*", "i*", "j*", "k*", "l*", "m*", "n*", "o*", "p*", "q*", "r*", "s*", "t*", "u*", "v*", "w*", "x*", "y*", "z*", "0*", "1*", "2*", "3*", "4*", "5*", "6*", "7*", "8*", "9*"}
+	// chars := []string{"0*", "1*", "2*", "3*", "4*", "5*", "6*", "7*", "8*", "9*"}
+	// chars := []string{"somchai*"}
+	// fmt.Printf("--> loop count : %v \n", ii)
+	t := time.Now()
+	td := t.Add(time.Duration(-timeFilter) * time.Minute)
+	timeThen := fmt.Sprintf("%d%02d%02d%02d%02d%02d.0Z",
+		td.Year(), td.Month(), td.Day(),
+		td.Hour(), td.Minute(), td.Second())
+	for _, char := range chars {
+		// fmt.Printf("Start Run SyncProcessFilterAD(\"%s\" \n", char)
+		param := "(sAMAccountName=" + char + ")(whenChanged>=" + timeThen + ")"
+		if timeFilter < 0 {
+			param = "(sAMAccountName=" + char + ")"
+		}
+
+		// fmt.Println(param)
+		boo, err = FilterAdSync(param, timeFilter)
+		if err != nil {
+			txterr := fmt.Sprintf("%s", err.(net.Error))
+			err = errors.New(txterr)
+			if strings.Index(txterr, "No connection") >= 0 {
+				//เคส login DB server ไม่ได้
+				return false, err
+			}
+		}
+	}
+	return true, err
 }
